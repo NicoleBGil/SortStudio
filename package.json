@@ -1,0 +1,16 @@
+{
+  "name": "sortstudio",
+  "version": "5.0.0",
+  "private": true,
+  "description": "An offline laboratory for visual comparison of sorting algorithms",
+  "scripts": {
+    "build": "esbuild three-scene.mjs --bundle --minify --format=iife --target=es2020 --legal-comments=inline --outfile=vendor/sort-scene.js",
+    "test": "node verify.cjs && node verify-experience.cjs && node verify-engine.cjs && node verify-coach.cjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
