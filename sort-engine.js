@@ -537,9 +537,9 @@
     return {maxOffset: max - min, key: record => direction === 'desc' ? max - BigInt(record.value) : BigInt(record.value) - min};
   }
 
-  function counting({a, auxiliary, write}, direction) {
+  function counting({a, auxiliary, write}, direction, knownOffsets) {
     if (a.length < 2) return;
-    const {maxOffset, key} = offsets(a, direction);
+    const {maxOffset, key} = knownOffsets ?? offsets(a, direction);
     if (maxOffset >= BigInt(maxCountingSpan)) {
       throw new RangeError(`Counting Sort needs at most ${maxCountingSpan.toLocaleString('en-US')} consecutive integer bins.`);
     }
@@ -624,10 +624,19 @@
 
   function countingOrMerge(recorder, direction, binsPerRecord) {
     if (recorder.a.length < 2) return;
-    const {maxOffset} = offsets(recorder.a, direction);
+    let min = recorder.a[0].value;
+    let max = min;
+    for (const {value} of recorder.a) {
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+    const maxOffset = max - min;
     const binLimit = Math.min(maxCountingSpan, binsPerRecord * recorder.a.length);
-    if (maxOffset < BigInt(binLimit)) counting(recorder, direction);
-    else mergeSort(recorder, direction, (state, low, high) => gappedInsertion(state, 1, low, high), 16);
+    if (Number.isSafeInteger(maxOffset) && maxOffset < binLimit) {
+      // A dense interval proves each subtraction is an exact small integer.
+      const key = direction === 'asc' ? record => record.value - min : record => max - record.value;
+      counting(recorder, direction, {maxOffset: BigInt(maxOffset), key});
+    } else mergeSort(recorder, direction, (state, low, high) => gappedInsertion(state, 1, low, high), 16);
   }
 
   const cutoffs = [8, 16, 32, 64];
