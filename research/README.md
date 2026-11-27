@@ -20,6 +20,8 @@ node research/sort-trials.cjs --workers 12 --records 1000 --seed 138 --key-bits 
 
 Choose A100 in Colab's runtime settings and run the notebook. The final cell exports the CSV, timing samples, and run metadata as a ZIP.
 
+The [recorded Colab A100 trial](results/colab-a100-uniform-1000/summary.md) includes both GPU timing series and the companion Colab CPU run.
+
 ## Inputs and checks
 
 One tuning dataset contains 1,000 records. Mulberry32 generates 12-bit keys in the inclusive range −2048 to 2047. Equal keys can occur, so each row has a separate original ID. Five additional seeds provide separate samples from the same distribution.
