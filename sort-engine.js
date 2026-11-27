@@ -8,6 +8,7 @@
   'use strict';
 
   const maxLength = 128;
+  const maxResearchLength = 4096;
   const maxCountingSpan = 16384;
   const checkpointSize = 128;
 
@@ -84,13 +85,29 @@
     auxWrites: 'Recorded updates to working storage, such as merge buffers, frequency counts, run lists, buckets, and tree nodes.',
   });
 
-  function copyInput(input, direction) {
+  function copyInput(input, direction, limit) {
     if (!Array.isArray(input)) throw new TypeError('Use a list of safe integers.');
-    if (input.length > maxLength) throw new RangeError(`Use at most ${maxLength} integers per run.`);
+    if (input.length > limit) throw new RangeError(`Use at most ${limit} integers per run.`);
     if (direction !== 'asc' && direction !== 'desc') throw new RangeError('Choose asc or desc.');
     const copy = Array.from({length: input.length}, (_, index) => input[index]);
     if (copy.some(value => !Number.isSafeInteger(value))) throw new TypeError('Use a list of safe integers.');
     return Object.freeze(copy);
+  }
+
+  function uniformRecords(length = 1000, seed = 138) {
+    if (!Number.isSafeInteger(length) || length < 0 || length > maxResearchLength) {
+      throw new RangeError(`Use 0 to ${maxResearchLength} research records.`);
+    }
+    if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff) {
+      throw new RangeError('Use an unsigned 32-bit seed.');
+    }
+    let state = seed;
+    return Array.from({length}, () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let mixed = Math.imul(state ^ (state >>> 15), state | 1);
+      mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
+      return ((mixed ^ (mixed >>> 14)) >>> 20) - 2048;
+    });
   }
 
   function makeRecorder(input, direction, trace) {
@@ -188,12 +205,12 @@
     }
   }
 
-  function gappedInsertion({a, compare, write, emit}, gap) {
-    for (let i = gap; i < a.length; i++) {
+  function gappedInsertion({a, compare, write, emit}, gap, low = 0, high = a.length) {
+    for (let i = low + gap; i < high; i++) {
       const held = a[i];
       let j = i;
       emit('hold', [i], `Hold ${held.value} for insertion.`, {held, gap});
-      while (j >= gap && compare(a[j - gap], held, [j - gap], `Compare ${a[j - gap].value} with held key ${held.value}.`) > 0) {
+      while (j >= low + gap && compare(a[j - gap], held, [j - gap], `Compare ${a[j - gap].value} with held key ${held.value}.`) > 0) {
         write(j, a[j - gap], 'shift', `Shift ${a[j - gap].value} forward by ${gap}.`, {held, gap});
         j -= gap;
       }
@@ -201,11 +218,11 @@
     }
   }
 
-  function binaryInsertion({a, compare, write, emit}) {
-    for (let i = 1; i < a.length; i++) {
+  function binaryInsertion({a, compare, write, emit}, start = 0, end = a.length) {
+    for (let i = start + 1; i < end; i++) {
       const held = a[i];
       emit('hold', [i], `Hold ${held.value} and binary-search the sorted prefix.`, {held});
-      let low = 0;
+      let low = start;
       let high = i;
       while (low < high) {
         const middle = Math.floor((low + high) / 2);
@@ -315,9 +332,13 @@
     emit('range', [low, high - 1], 'The merged range is ordered.', {low, high});
   }
 
-  function mergeSort(recorder) {
+  function mergeSort(recorder, _direction, leaf, cutoff = 0) {
     function divide(low, high) {
       if (high - low < 2) return;
+      if (high - low <= cutoff) {
+        leaf(recorder, low, high);
+        return;
+      }
       const middle = Math.floor((low + high) / 2);
       recorder.emit('split', [low, middle, high - 1], 'Split the range into two halves.', {low, middle, high});
       divide(low, middle);
@@ -376,9 +397,14 @@
     sort(0, a.length - 1);
   }
 
-  function quickThreeWay({a, compare, swap, emit}) {
+  function quickThreeWay(recorder, _direction, cutoff = 0) {
+    const {a, compare, swap, emit} = recorder;
     function sort(low, high) {
       while (low < high) {
+        if (high - low + 1 <= cutoff) {
+          gappedInsertion(recorder, 1, low, high + 1);
+          return;
+        }
         const middle = Math.floor((low + high) / 2);
         const pivot = a[middle];
         emit('pivot', [middle], `Partition around the held pivot ${pivot.value}.`, {pivot, low, high: high + 1});
@@ -553,7 +579,7 @@
     }
   }
 
-  function bucket({a, compare, auxiliary, write}, direction) {
+  function bucket({a, compare, auxiliary, write, emit}, direction, binary = false) {
     if (a.length < 2) return;
     const {maxOffset, key} = offsets(a, direction);
     const count = Math.ceil(Math.sqrt(a.length));
@@ -564,6 +590,13 @@
       auxiliary(1, [i], `Place ${a[i].value} in interval ${bin + 1}.`, {bucket: bin});
     }
     groups.forEach((group, bin) => {
+      if (binary) {
+        binaryInsertion({a: group, compare, emit, write(i, record) {
+          group[i] = record;
+          auxiliary(1, [record.id], `Write a record in interval ${bin + 1}.`, {bucket: bin});
+        }});
+        return;
+      }
       for (let i = 1; i < group.length; i++) {
         const held = group[i];
         let j = i;
@@ -583,17 +616,46 @@
   }
 
   const runners = {
-    bubble, selection, insertion: recorder => gappedInsertion(recorder, 1), 'binary-insertion': binaryInsertion,
+    bubble, selection, insertion: recorder => gappedInsertion(recorder, 1),
+    'binary-insertion': recorder => binaryInsertion(recorder),
     cocktail, gnome, 'odd-even': oddEven, comb, shell, merge: mergeSort, 'natural-merge': naturalMerge,
     quick, 'quick-three-way': quickThreeWay, heap, cycle, pancake, tree, counting, radix, bucket,
   };
 
-  function run(id, input, direction = 'asc', {trace = true} = {}) {
-    if (!Object.prototype.hasOwnProperty.call(runners, id)) throw new RangeError(`Unknown sort: ${id}`);
-    const initial = copyInput(input, direction);
+  function countingOrMerge(recorder, direction, binsPerRecord) {
+    if (recorder.a.length < 2) return;
+    const {maxOffset} = offsets(recorder.a, direction);
+    const binLimit = Math.min(maxCountingSpan, binsPerRecord * recorder.a.length);
+    if (maxOffset < BigInt(binLimit)) counting(recorder, direction);
+    else mergeSort(recorder, direction, (state, low, high) => gappedInsertion(state, 1, low, high), 16);
+  }
+
+  const cutoffs = [8, 16, 32, 64];
+  const hybridDefinitions = [
+    ...cutoffs.map(cutoff => [`merge-insertion-${cutoff}`, `Merge + insertion (${cutoff})`, true,
+      (recorder, direction) => mergeSort(recorder, direction,
+        (state, low, high) => gappedInsertion(state, 1, low, high), cutoff)]),
+    ...cutoffs.map(cutoff => [`merge-binary-insertion-${cutoff}`, `Merge + binary insertion (${cutoff})`, true,
+      (recorder, direction) => mergeSort(recorder, direction, binaryInsertion, cutoff)]),
+    ...cutoffs.map(cutoff => [`quick-three-way-insertion-${cutoff}`, `3-way quick + insertion (${cutoff})`, false,
+      (recorder, direction) => quickThreeWay(recorder, direction, cutoff)]),
+    ['bucket-binary-insertion', 'Bucket + binary insertion', true,
+      (recorder, direction) => bucket(recorder, direction, true)],
+    ...[2, 8].map(limit => [`counting-or-merge-${limit}`, `Counting or merge + insertion (${limit} bins per record)`, true,
+      (recorder, direction) => countingOrMerge(recorder, direction, limit)]),
+  ];
+  const researchAlgorithms = Object.freeze([
+    ...algorithms,
+    ...hybridDefinitions.map(([id, name, stable]) => Object.freeze({id, name, stable, family: 'Research hybrid'})),
+  ]);
+  const researchRunners = {...runners, ...Object.fromEntries(hybridDefinitions.map(([id, , , runner]) => [id, runner]))};
+
+  function execute(id, input, direction, trace, limit, methods) {
+    if (!Object.prototype.hasOwnProperty.call(methods, id)) throw new RangeError(`Unknown sort: ${id}`);
+    const initial = copyInput(input, direction, limit);
     const recorder = makeRecorder(initial, direction, trace);
     recorder.emit('ready', [], 'Ready to sort.');
-    runners[id](recorder, direction);
+    methods[id](recorder, direction);
     recorder.emit('done', [], 'All keys are in the requested order.');
     return Object.freeze({
       id, direction, initial, result: Object.freeze(recorder.a.map(record => record.value)),
@@ -602,5 +664,14 @@
     });
   }
 
-  return Object.freeze({algorithms, byId, run, maxLength, maxCountingSpan, metricDefinitions});
+  function run(id, input, direction = 'asc', {trace = true} = {}) {
+    return execute(id, input, direction, trace, maxLength, runners);
+  }
+
+  function runResearch(id, input, direction = 'asc') {
+    return execute(id, input, direction, false, maxResearchLength, researchRunners);
+  }
+
+  return Object.freeze({algorithms, byId, run, maxLength, maxCountingSpan, metricDefinitions,
+    researchAlgorithms, runResearch, uniformRecords, maxResearchLength});
 });

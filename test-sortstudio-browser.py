@@ -1,5 +1,5 @@
 ﻿from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 from hashlib import sha256
 out=Path('test-results')
 out.mkdir(exist_ok=True)
@@ -89,8 +89,15 @@ with sync_playwright() as p:
     assert '16,384' in wide.locator('#sl-status').inner_text() or '16384' in wide.locator('#sl-status').inner_text()
     assert wide.locator('#sl-item option').count()==5
     assert wide.locator('#arena').count()==1 and wide.locator('a[href="#arena"]').count()>0
+    wide.locator('a[href="#research-validation"]').click()
+    expect(wide.locator('#research-validation p').first).to_contain_text(chr(8722) + '2,048 to 2,047')
+    wide.get_by_role('button', name='Check all 20 methods').click()
+    expect(wide.locator('#sr-status')).to_have_text('20 of 20 methods passed on the same 1,000 records.')
+    expect(wide.locator('#sr-results tbody tr')).to_have_count(20)
+    assert wide.locator('#sr-results tbody td:nth-child(2)').all_text_contents() == ['Passed'] * 20
+    wide.locator('#research-validation').screenshot(path=out/'uniform-1000-methods.png')
     assert not errors, errors
-    print('PASS desktop offline file, 3D canvas, camera buttons, mouse orbit and zoom, 20 final traces, D3 scrubbing, signed/duplicate inspection, counting bound, coach and challenge')
+    print('PASS desktop offline file, 3D canvas, camera buttons, mouse orbit and zoom, 20 final traces, D3 scrubbing, signed/duplicate inspection, counting bound, coach, challenge, and all 20 validations at 1,000 records')
     mobile=browser.new_page(viewport={'width':390,'height':844},has_touch=True,is_mobile=True,reduced_motion='reduce',device_scale_factor=2)
     mobile.on('pageerror', lambda error: errors.append(str(error)))
     mobile.goto(url)
@@ -119,6 +126,9 @@ with sync_playwright() as p:
     mobile.wait_for_timeout(300)
     mobile.locator('.sl-stage').screenshot(path=out/'mobile-3d.png')
     assert mobile.locator('#sort-lab').evaluate('e => e.scrollWidth <= e.clientWidth+1')
+    mobile.get_by_role('button', name='Check all 20 methods').tap()
+    expect(mobile.locator('#sr-status')).to_have_text('20 of 20 methods passed on the same 1,000 records.')
+    assert mobile.locator('#research-validation').evaluate('e => e.scrollWidth <= e.clientWidth+1')
     assert not errors, errors
     print('PASS 390 px mobile emulation, one-finger orbit, two-finger pinch, no lab overflow')
     fallback=browser.new_page(viewport={'width':1100,'height':800},reduced_motion='reduce')

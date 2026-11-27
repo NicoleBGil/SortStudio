@@ -35,6 +35,21 @@
 #sort-lab input::placeholder { color: #a3b9c4; opacity: 1; }
 .sl-header { display: flex; align-items: start; gap: 20px; justify-content: space-between; margin-bottom: 21px; }
 .sl-header p { color: var(--sl-muted); max-width: 54ch; }
+.sl-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+#research-validation [hidden] { display: none !important; }
+#research-validation .toolbar { align-items: center; }
+#research-validation progress { width: min(14rem, 100%); accent-color: var(--teal); }
+#sr-results { max-width: 100%; overflow-x: auto; }
+#sr-results table { width: 100%; margin: 0; border-collapse: collapse; }
+#sr-results caption {
+  padding: .65rem 0;
+  text-align: start;
+  font-weight: 650;
+}
+#sr-results :is(th, td) { padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
+#sr-results th { text-align: start; }
+#sr-results :is(th, td):nth-child(n + 3) { text-align: end; font-variant-numeric: tabular-nums; }
 #sort-lab .sl-kicker, .sl-coach .sl-panel-head span { color: var(--sl-teal); font: 700 10px/1.5 ui-monospace, monospace; letter-spacing: .13em; }
 .sl-header a { color: var(--sl-teal); font-size: 13px; flex-shrink: 0; margin-top: 6px; }
 .sl-settings { display: grid; grid-template-columns: repeat(2, minmax(123px, 1.2fr)) minmax(118px, 1fr) minmax(96px, .8fr) minmax(76px, .75fr) minmax(82px, .66fr) auto; gap: 8px; align-items: end; }

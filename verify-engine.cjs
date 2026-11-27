@@ -13,14 +13,14 @@ assert.equal(algorithms.length, 20);
 assert.equal(new Set(algorithms.map(({id}) => id)).size, 20);
 for (const algorithm of algorithms) assert.equal(byId[algorithm.id], algorithm);
 
-function checkOutput(algorithm, direction, input, traced = false) {
+function checkOutput(algorithm, direction, input, traced = false, runner = run) {
   const label = `${algorithm.id} ${direction} [${input.join(', ')}]`;
   const order = direction === 'asc' ? 1 : -1;
   const orderedIds = input.map((_, id) => id).sort((left, right) => {
     if (input[left] === input[right]) return left - right;
     return (input[left] < input[right] ? -1 : 1) * order;
   });
-  const result = run(algorithm.id, Object.freeze(input), direction, {trace: traced});
+  const result = runner(algorithm.id, Object.freeze(input), direction, {trace: traced});
   assert.deepEqual(result.initial, input, `${label}: initial values`);
   assert.deepEqual(result.result, orderedIds.map(id => input[id]), `${label}: sorted values`);
   assert.deepEqual(result.resultIds.slice().sort((a, b) => a - b), input.map((_, id) => id), `${label}: input IDs`);
@@ -119,6 +119,17 @@ for (const algorithm of algorithms) {
     } else verifyReplay(algorithm, direction, extreme);
   }
 }
+
+const uniform = engine.uniformRecords(1000, 138);
+assert.equal(uniform.length, 1000);
+assert.ok(uniform.every(key => Number.isInteger(key) && key >= -2048 && key <= 2047));
+assert.ok(new Set(uniform).size < uniform.length, 'The sample includes equal keys');
+assert.deepEqual(uniform, engine.uniformRecords(1000, 138));
+assert.notDeepEqual(uniform, engine.uniformRecords(1000, 139));
+for (const algorithm of algorithms) {
+  for (const direction of directions) checkOutput(algorithm, direction, uniform, false, engine.runResearch);
+}
+assert.throws(() => run('merge', uniform), /at most 128/);
 
 assert.deepEqual(run('bubble', [3, 2, 1]).metrics, {comparisons: 3, writes: 6, swaps: 3, auxWrites: 0});
 assert.deepEqual(run('selection', [3, 2, 1]).metrics, {comparisons: 3, writes: 2, swaps: 1, auxWrites: 0});

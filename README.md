@@ -29,6 +29,18 @@ python test-sortstudio-browser.py
 
 The browser check opens the packaged app directly from disk, exercises all 20 selections, verifies mouse and emulated touch camera controls, and checks the WebGL fallback. It saves screenshots to `test-results/`.
 
+### Reproduce the sorting trials
+
+Open **Method & Sources** for the 1,000-record browser correctness check, or run the research harness from the repository root.
+
+```sh
+node research/sort-trials.cjs --records 1000 --seed 138 --workers 12 --output research/results/repeat-uniform
+```
+
+Every implementation receives the same keys and original record IDs. The checks cover both directions, preservation of every record, and tie order when a method promises stability. Worker threads verify the cases. The benchmark times algorithms serially, selects a hybrid on the tuning seed, then evaluates it on held-out seeds. The runtime's stable `Array.sort` is a separate reference. See the [initial uniform results](research/results/uniform-1000/summary.md).
+
+The archived [source snapshot](https://github.com/NicoleBGil/SortStudio/tree/archive/sortstudio-six-20261127) corresponds to the preserved [original deployment](https://sortstudio-six.vercel.app/#method).
+
 ### Research question for a follow-up study
 
 Does predicting the next operation in a synchronized two-lane replay improve learners' ability to explain or trace an unfamiliar input? A comparison could match algorithms, practice time, and examples, vary the prediction interaction, then score traces and explanations on unseen inputs with a fixed rubric. This is a proposed study.

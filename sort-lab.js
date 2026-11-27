@@ -10,7 +10,10 @@
       <div><p class="sl-kicker">SORTSTUDIO / COMPARISON LAB</p>
       <h2>Two algorithms. One input.</h2>
       <p>Watch 20 sorting algorithms turn the same values into order, then inspect the work behind each step.</p></div>
-      <a href="#arena">Classic lessons ↓</a>
+      <nav class="sl-shortcuts" aria-label="Comparison lab links">
+        <a href="#research-validation">Validate 1,000 records</a>
+        <a href="#arena">Classic lessons</a>
+      </nav>
     </header>
     <div class="sl-settings">
       <label class="sl-a">Algorithm A <select id="sl-a"></select></label>
