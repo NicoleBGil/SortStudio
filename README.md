@@ -1,8 +1,41 @@
-# SortStudio 4.0 — Order from the Chaos
+# SortStudio — Order from the Chaos
 
-## Open and present
+## 20-algorithm comparison lab
 
-Extract the whole folder and double-click index.html. All libraries, styles, and scripts are local; no internet, account, installation, API key, or build step is required. Keep the files together. A separate single-file HTML edition is also supplied outside the source folder.
+Open **20-Algorithm Lab** from the sidebar. Choose two algorithms and generate a seeded input or enter 2–128 signed integers. Both lanes receive a copy of the same input, with the same item identities and sort direction. Counting Sort supports inputs spanning up to 16,384 integer bins.
+
+- **Three.js arena.** Rotate by dragging, zoom with the mouse wheel or a two-finger pinch, and select a bar to track its original item. The camera buttons provide the same navigation without gestures. Each bar's direction and height show the sign and magnitude of its value on a scale shared by both lanes. Orange marks active positions and cream marks the tracked item. The 2D arena is available for exact inspection and as a fallback when WebGL is unavailable.
+- **D3 plots.** Compare cumulative key comparisons, main-array writes, swaps, and auxiliary writes. Select a point along the horizontal axis to seek to that event. Tracked-item position shows the first occurrence while a record is temporarily duplicated and a gap while it is absent from the main array. The cursor always reads the exact trace even when long metric lines are sampled for display.
+- **Sort coach.** Ask about a recorded operation, compare measured work, check equal-key order, or try predicting an event in either lane. The coach uses the engine's traces and algorithm catalog in the browser. There is no external model or account setup.
+
+The simulation compares recorded operations. A shared timeline aligns event numbers, and each lane freezes when its own trace ends. A swap writes two main-array cells. Comparison counts exclude validation, loop and bounds checks, and distribution range scans. Auxiliary writes count recorded updates to working structures. Use operation counts to explain behavior on the chosen input. The display does not measure CPU time.
+
+### Rebuild and verify
+
+```sh
+npm ci
+npm run build
+npm test
+```
+
+`sort-engine.js` contains the sorting implementations and reversible traces. `sort-lab.js` and `sort-lab.css` implement the comparison interface and D3 charts. `three-scene.mjs` builds the portable `vendor/sort-scene.js`, with the MIT license in `THREE-LICENSE.txt`. `sort-coach.js` implements the local coach.
+
+To exercise the browser flows, install Playwright for Python and use a machine with Chrome:
+
+```sh
+python -m pip install playwright
+python test-sortstudio-browser.py
+```
+
+The browser check opens the packaged app directly from disk, exercises all 20 selections, verifies mouse and emulated touch camera controls, and checks the WebGL fallback. It saves screenshots to `test-results/`.
+
+### Research question for a follow-up study
+
+Does predicting the next operation in a synchronized two-lane replay improve learners' ability to explain or trace an unfamiliar input? A comparison could match algorithms, practice time, and examples, vary the prediction interaction, then score traces and explanations on unseen inputs with a fixed rubric. This is a proposed study.
+
+## Open and present the classic lessons
+
+Extract the whole folder and double-click index.html. The checked-in libraries, styles, and scripts allow offline use. Keep the files together.
 
 For the visual opener, click **Launch Sorting Theater**, then **Begin the race**. It fills the browser panel with projected illuminated lanes, live values, operation counters, and a completion reveal. Use the full-screen button when supported. Play/pause, stepping, scrubbing, reverse/random/sorted input, speed, and reset all use the main arena’s actual traces. This is an alternate presentation of the arena, not an additional independent scientific view.
 

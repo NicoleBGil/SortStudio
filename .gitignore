@@ -1,0 +1,4 @@
+node_modules/
+.julie-project-status.json
+.julie-sortstudio-progress.json
+test-results/
