@@ -10,14 +10,158 @@
     const items=[['Puzzle',record.puzzle],['Prediction',record.prediction]];
     el('gameDashboard').replaceChildren(...items.map(([name,r])=>{const c=document.createElement('div');c.className='game-result';const h=document.createElement('strong');h.textContent=name;const p=document.createElement('p');p.textContent=r?`${r.level} · ${r.detail} · ${r.time}s`:'Not completed yet';c.append(h,p);return c;}));
   }
-  let puzzle=[],selected=-1,moves=0,puzzleStart=0,puzzleDone=false,puzzleHints=0;
-  function puzzleSize(){return sizes[el('puzzleDifficulty').value]||6;}
-  function newPuzzle(){puzzle=shuffled(puzzleSize());if(puzzle.every((v,i)=>v===i+1))[puzzle[0],puzzle[1]]=[puzzle[1],puzzle[0]];selected=-1;moves=0;puzzleHints=0;puzzleDone=false;puzzleStart=performance.now();el('puzzleFeedback').textContent='Select one tile, then another to swap.';renderPuzzle();}
-  function renderPuzzle(){el('puzzleStats').textContent=`Moves: ${moves}`;el('puzzleMetrics').textContent=`Difficulty: ${el('puzzleDifficulty').value} · Hints: ${puzzleHints} · Target: ascending order`;el('puzzleTiles').replaceChildren(...puzzle.map((v,i)=>{const b=document.createElement('button');b.className='puzzle-tile'+(i===selected?' chosen':'');b.textContent=v;b.disabled=puzzleDone;b.setAttribute('aria-pressed',String(i===selected));b.setAttribute('aria-label',`Position ${i+1}, value ${v}`);b.addEventListener('click',()=>{if(selected<0){selected=i;el('puzzleFeedback').textContent=`Selected ${v}. Choose a second tile.`;}else if(selected===i){selected=-1;el('puzzleFeedback').textContent='Selection cleared.';}else{[puzzle[selected],puzzle[i]]=[puzzle[i],puzzle[selected]];moves++;selected=-1;if(puzzle.every((x,k)=>x===k+1)){puzzleDone=true;const t=elapsed(puzzleStart);const minSwaps=minimumSwapsAtStart;el('puzzleFeedback').textContent=`🎉 Solved in ${moves} moves (${t}s)! Minimum possible: ${minSwaps} swaps.`;record.puzzle={level:el('puzzleDifficulty').value,detail:`${moves} moves, ${puzzleHints} hints`,time:t};dashboard();}else el('puzzleFeedback').textContent='Swap complete. Keep going!';}renderPuzzle();});return b;}));}
-  function minSwaps(a){let visited=new Set(),cycles=0;for(let i=0;i<a.length;i++){if(visited.has(i))continue;cycles++;let j=i;while(!visited.has(j)){visited.add(j);j=a[j]-1;}}return a.length-cycles;}
-  let minimumSwapsAtStart=0;
-  const originalNewPuzzle=newPuzzle;
-  function resetPuzzle(){originalNewPuzzle();minimumSwapsAtStart=minSwaps(puzzle);}
+  let puzzle = [], selected = -1, moves = 0, puzzleStart = 0, puzzleDone = false, puzzleHints = 0;
+  let minimumSwapsAtStart = 0;
+  const board = el('puzzleTiles');
+  const motionToggle = el('puzzle-motion');
+  const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+  let moving = !motionPreference.matches;
+  let tiles = new Map();
+
+  function updateMotion() {
+    board.classList.toggle('julieblocks-moving', moving);
+    motionToggle.textContent = moving ? 'Pause motion' : 'Resume motion';
+    for (const tile of tiles.values()) {
+      const avatar = tile.querySelector('.julieblocks-avatar');
+      if (avatar) avatar.src = avatar.dataset[moving ? 'animated' : 'still'];
+      if (!moving) tile.getAnimations().forEach(animation => animation.cancel());
+    }
+  }
+
+  function createTile(value) {
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'puzzle-tile julieblock';
+    tile.dataset.value = value;
+
+    const figure = document.createElement('span');
+    figure.className = 'julieblocks-figure';
+    figure.setAttribute('aria-hidden', 'true');
+    figure.style.setProperty('--block-hue', [180, 153, 270, 17, 307, 206, 53, 194][value - 1]);
+    figure.style.setProperty('--block-delay', `${-0.37 * value}s`);
+    if (value === 5 || value === 7) {
+      const avatar = new Image();
+      avatar.className = 'julieblocks-avatar';
+      avatar.alt = '';
+      avatar.decoding = 'async';
+      avatar.dataset.animated = `assets/julieblocks/number-${value}.webp`;
+      avatar.dataset.still = `assets/julieblocks/number-${value}.png`;
+      avatar.src = avatar.dataset[moving ? 'animated' : 'still'];
+      figure.append(avatar);
+    } else {
+      const head = document.createElement('span');
+      head.className = 'julieblocks-head';
+      const face = document.createElement('span');
+      face.className = 'julieblocks-face';
+      head.append(face);
+      const body = document.createElement('span');
+      body.className = 'julieblocks-body';
+      body.style.setProperty('--block-columns', Math.ceil(Math.sqrt(Math.max(1, value - 1))));
+      for (let i = 1; i < value; i++) body.append(document.createElement('span'));
+      figure.append(head, body);
+    }
+
+    const label = document.createElement('span');
+    label.className = 'julieblocks-value';
+    label.textContent = value;
+    tile.append(figure, label);
+    tile.addEventListener('click', () => chooseTile(Number(tile.dataset.position)));
+    return tile;
+  }
+
+  function resetPuzzle() {
+    puzzle = shuffled(sizes[el('puzzleDifficulty').value] || 6);
+    if (puzzle.every((value, i) => value === i + 1)) [puzzle[0], puzzle[1]] = [puzzle[1], puzzle[0]];
+    selected = -1;
+    moves = 0;
+    puzzleHints = 0;
+    puzzleDone = false;
+    puzzleStart = performance.now();
+    minimumSwapsAtStart = minSwaps(puzzle);
+    el('puzzleFeedback').textContent = 'Select one block, then another to swap.';
+    tiles = new Map(puzzle.map(value => [value, createTile(value)]));
+    board.replaceChildren(...tiles.values());
+    updateMotion();
+    renderPuzzle();
+  }
+
+  function renderPuzzle(animateSwap = false) {
+    const focused = board.contains(document.activeElement) ? document.activeElement : null;
+    const positions = animateSwap && moving
+      ? new Map([...tiles].map(([value, tile]) => [value, tile.getBoundingClientRect()]))
+      : null;
+    puzzle.forEach((value, i) => {
+      const tile = tiles.get(value);
+      if (board.children[i] !== tile) board.insertBefore(tile, board.children[i] || null);
+      tile.classList.toggle('chosen', i === selected);
+      tile.classList.toggle('solved', puzzleDone);
+      tile.dataset.position = i;
+      tile.disabled = puzzleDone;
+      tile.setAttribute('aria-pressed', String(i === selected));
+      tile.setAttribute('aria-label', `Position ${i + 1}, value ${value}`);
+    });
+    if (puzzleDone && focused) el('puzzleNew').focus({preventScroll: true});
+    else if (focused && focused !== document.activeElement) focused.focus({preventScroll: true});
+    if (positions) {
+      for (const [value, tile] of tiles) {
+        const previous = positions.get(value);
+        const next = tile.getBoundingClientRect();
+        const x = previous.x - next.x;
+        const y = previous.y - next.y;
+        if (x || y) {
+          tile.getAnimations().forEach(animation => animation.cancel());
+          tile.animate([{transform: `translate(${x}px, ${y}px)`}, {transform: 'translate(0, 0)'}],
+            {duration: 320, easing: 'cubic-bezier(.2,.75,.2,1)'});
+        }
+      }
+    }
+    el('puzzleStats').textContent = `Moves: ${moves}`;
+    el('puzzleMetrics').textContent =
+      `Difficulty: ${el('puzzleDifficulty').value} · Hints: ${puzzleHints} · Target: ascending order`;
+  }
+
+  function chooseTile(position) {
+    if (puzzleDone) return;
+    const feedback = el('puzzleFeedback');
+    if (selected < 0) {
+      selected = position;
+      feedback.textContent = `Selected ${puzzle[position]}. Choose a second block.`;
+      renderPuzzle();
+      return;
+    }
+    if (selected === position) {
+      selected = -1;
+      feedback.textContent = 'Selection cleared.';
+      renderPuzzle();
+      return;
+    }
+    [puzzle[selected], puzzle[position]] = [puzzle[position], puzzle[selected]];
+    selected = -1;
+    moves++;
+    puzzleDone = puzzle.every((value, i) => value === i + 1);
+    if (puzzleDone) {
+      const time = elapsed(puzzleStart);
+      feedback.textContent = `Solved in ${moves} moves (${time}s)! Minimum possible: ${minimumSwapsAtStart} swaps.`;
+      record.puzzle = {level: el('puzzleDifficulty').value, detail: `${moves} moves, ${puzzleHints} hints`, time};
+      dashboard();
+    } else feedback.textContent = 'Swap complete. Keep going!';
+    renderPuzzle(true);
+  }
+
+  function minSwaps(values) {
+    const visited = new Set();
+    let cycles = 0;
+    for (let i = 0; i < values.length; i++) {
+      if (visited.has(i)) continue;
+      cycles++;
+      for (let j = i; !visited.has(j); j = values[j] - 1) visited.add(j);
+    }
+    return values.length - cycles;
+  }
+
+  motionToggle.addEventListener('click', () => { moving = !moving; updateMotion(); });
+  motionPreference.addEventListener('change', event => { moving = !event.matches; updateMotion(); });
+
   function puzzleHint(){if(puzzleDone)return;const i=puzzle.findIndex((v,k)=>v!==k+1);if(i<0)return;const j=puzzle.indexOf(i+1);puzzleHints++;el('puzzleFeedback').textContent=`Hint: swap positions ${i+1} and ${j+1} to put ${i+1} in its correct place.`;renderPuzzle();}
   let arr=[],pos=0,end=0,round=0,score=0,answered=false,finished=false,predictStart=0,predictHints=0;
   function predictSize(){return el('predictDifficulty').value==='hard'?7:el('predictDifficulty').value==='easy'?4:5;}

@@ -131,3 +131,6 @@
   #sort-lab .sl-camera button { min-width: 38px; min-height: 40px; }
   #sl-canvas, #sl-bars { height: clamp(290px, 82vw, 440px); }
 }
+#sr-benchmark-results { max-width: 100%; overflow-x: auto; }
+#sr-benchmark-results table { margin: 0; }
+#run-aware-counting .toolbar label { font-weight: 700; }

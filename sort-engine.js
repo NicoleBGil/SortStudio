@@ -537,13 +537,14 @@
     return {maxOffset: max - min, key: record => direction === 'desc' ? max - BigInt(record.value) : BigInt(record.value) - min};
   }
 
-  function counting({a, auxiliary, write}, direction, knownOffsets) {
+  function counting({a, auxiliary, write}, direction, knownOffsets, typedBins = false) {
     if (a.length < 2) return;
     const {maxOffset, key} = knownOffsets ?? offsets(a, direction);
-    if (maxOffset >= BigInt(maxCountingSpan)) {
+    if (maxOffset >= maxCountingSpan) {
       throw new RangeError(`Counting Sort needs at most ${maxCountingSpan.toLocaleString('en-US')} consecutive integer bins.`);
     }
-    const counts = Array(Number(maxOffset) + 1).fill(0);
+    const size = Number(maxOffset) + 1;
+    const counts = typedBins ? new Uint32Array(size) : Array(size).fill(0);
     auxiliary(counts.length, [], `Initialize ${counts.length} frequency bins.`);
     for (let i = 0; i < a.length; i++) {
       const bin = Number(key(a[i]));
@@ -639,6 +640,46 @@
     } else mergeSort(recorder, direction, (state, low, high) => gappedInsertion(state, 1, low, high), 16);
   }
 
+  function runAwareCounting(recorder, direction) {
+    const {a, compare, write} = recorder;
+    if (a.length < 2) return 'ordered';
+    let min = a[0].value;
+    let max = min;
+    let ordered = true;
+    let reversed = true;
+    for (let i = 1; i < a.length; i++) {
+      const key = a[i].value;
+      if (key < min) min = key;
+      if (key > max) max = key;
+      if (ordered || reversed) {
+        const order = compare(a[i - 1], a[i], [i - 1, i]);
+        if (order > 0) ordered = false;
+        if (order < 0) reversed = false;
+      }
+    }
+    if (ordered) return 'ordered';
+    if (reversed) {
+      const original = a.slice();
+      recorder.auxiliary(a.length, [], 'Copy records before reversing the equal-key groups.');
+      let dest = 0;
+      for (let end = a.length; end > 0;) {
+        let start = end - 1;
+        while (start > 0 && compare(original[start - 1], original[end - 1]) === 0) start--;
+        for (let i = start; i < end; i++) write(dest++, original[i]);
+        end = start;
+      }
+      return 'reverse-groups';
+    }
+    const span = max - min + 1;
+    if (Number.isSafeInteger(span) && span <= Math.min(maxCountingSpan, a.length * 8)) {
+      const key = direction === 'asc' ? record => record.value - min : record => max - record.value;
+      counting(recorder, direction, {maxOffset: span - 1, key}, true);
+      return 'dense-counting';
+    }
+    naturalMerge(recorder);
+    return 'natural-merge';
+  }
+
   const cutoffs = [8, 16, 32, 64];
   const hybridDefinitions = [
     ...cutoffs.map(cutoff => [`merge-insertion-${cutoff}`, `Merge + insertion (${cutoff})`, true,
@@ -652,6 +693,7 @@
       (recorder, direction) => bucket(recorder, direction, true)],
     ...[2, 8].map(limit => [`counting-or-merge-${limit}`, `Counting or merge + insertion (${limit} bins per record)`, true,
       (recorder, direction) => countingOrMerge(recorder, direction, limit)]),
+    ['run-aware-counting', 'Run-Aware Counting', true, runAwareCounting],
   ];
   const researchAlgorithms = Object.freeze([
     ...algorithms,
@@ -664,10 +706,11 @@
     const initial = copyInput(input, direction, limit);
     const recorder = makeRecorder(initial, direction, trace);
     recorder.emit('ready', [], 'Ready to sort.');
-    methods[id](recorder, direction);
+    const route = methods[id](recorder, direction);
     recorder.emit('done', [], 'All keys are in the requested order.');
     return Object.freeze({
-      id, direction, initial, result: Object.freeze(recorder.a.map(record => record.value)),
+      id, direction, initial, ...(id === 'run-aware-counting' && {route}),
+      result: Object.freeze(recorder.a.map(record => record.value)),
       resultIds: Object.freeze(recorder.a.map(record => record.id)), metrics: Object.freeze({...recorder.metrics}),
       eventCount: recorder.eventCount, events: Object.freeze(recorder.events), at: recorder.at,
     });

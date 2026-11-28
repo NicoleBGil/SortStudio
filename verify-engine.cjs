@@ -129,6 +129,26 @@ assert.notDeepEqual(uniform, engine.uniformRecords(1000, 139));
 for (const algorithm of algorithms) {
   for (const direction of directions) checkOutput(algorithm, direction, uniform, false, engine.runResearch);
 }
+const candidate = engine.researchAlgorithms.find(({id}) => id === 'run-aware-counting');
+const candidateCases = [
+  {input: [], asc: 'ordered', desc: 'ordered'},
+  {input: [4, 4, 4], asc: 'ordered', desc: 'ordered'},
+  {input: [-2, -2, 3, 3], asc: 'ordered', desc: 'reverse-groups'},
+  {input: [3, 3, -2, -2], asc: 'reverse-groups', desc: 'ordered'},
+  {input: [0, -2, 5, 5, -2, 0], asc: 'dense-counting', desc: 'dense-counting'},
+  {input: [0, -16, 15, -16], asc: 'dense-counting', desc: 'dense-counting'},
+  {input: [0, -16, 16, -16], asc: 'natural-merge', desc: 'natural-merge'},
+  {input: [Number.MAX_SAFE_INTEGER, Number.MIN_SAFE_INTEGER, 10, 10], asc: 'natural-merge', desc: 'natural-merge'},
+  {input: uniform, asc: 'dense-counting', desc: 'dense-counting'},
+];
+for (const testCase of candidateCases) {
+  for (const direction of directions) {
+    checkOutput(candidate, direction, testCase.input, false, engine.runResearch);
+    const result = engine.runResearch(candidate.id, testCase.input, direction);
+    assert.equal(result.route, testCase[direction]);
+    if (result.route === 'ordered') assert.equal(result.metrics.writes, 0);
+  }
+}
 assert.throws(() => run('merge', uniform), /at most 128/);
 
 assert.deepEqual(run('bubble', [3, 2, 1]).metrics, {comparisons: 3, writes: 6, swaps: 3, auxWrites: 0});

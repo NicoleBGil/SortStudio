@@ -1,5 +1,42 @@
 # SortStudio sorting trials
 
+## Run-Aware Counting
+
+The stable candidate compares neighboring keys until it can rule out both
+monotonic orders and scans the numeric range in the same pass. It returns
+already ordered input without main-array writes. For opposite-order input it
+reverses equal-key groups while retaining each group's arrival order. Other
+inputs take stable counting with typed bins if the range fits the smaller of
+16,384 bins and eight times the record count. Wider ranges use stable natural
+merge sort. The respective time bounds are O(n), O(n), O(n + k), and O(n log n).
+The candidate is an engineering hybrid of established techniques.
+
+Two CPU trials used 1,000 records, tuning seed 20,261,128, five additional
+held-out seeds, five serial timing samples per method, and four workers for
+untimed permutation and stability checks. Each trial validated 444 cases
+across both directions. Timing used ascending output.
+
+| Key distribution | Candidate median | Fastest original median | Native median | Candidate wins against all 20 |
+| --- | ---: | ---: | ---: | ---: |
+| Uniform, 4,096 possible keys | 0.663 ms | 0.888 ms | 0.313 ms | 5 / 5 |
+| Dense, 64 possible keys | 0.670 ms | 0.709 ms | 0.284 ms | 2 / 5 |
+
+Each listed median is the median of the five per-seed medians. A win requires
+less time than every original method on that particular seed. Counting sort
+had the lowest median among the original methods in both trials. The earlier
+counting-or-merge hybrid with eight bins per record had lower medians
+(0.640 ms and 0.605 ms). Native sort logs no SortStudio operation counters.
+The measurements concern this engine and local CPU. The archived A100 study
+uses different methods and did not time this candidate.
+
+```sh
+node research/sort-trials.cjs --workers 4 --records 1000 --seed 20261128 --key-bits 6 --output research/results/reproduce-run-aware-dense
+node research/sort-trials.cjs --workers 4 --records 1000 --seed 20261128 --output research/results/reproduce-run-aware-uniform
+```
+
+[Uniform raw results](results/run-aware-uniform-1000/trials.json) ·
+[Dense-key raw results](results/run-aware-dense-1000/trials.json).
+
 Run the uniform-record comparison from the SortStudio repository with Node.js 18.14 or newer.
 
 ```sh
